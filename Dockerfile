@@ -4,6 +4,9 @@ FROM golang:1.25-bookworm AS build
 
 WORKDIR /src
 
+# 服务器网络环境可能无法稳定访问 proxy.golang.org；国内代理失败时仍回退到直连。
+ENV GOPROXY=https://goproxy.cn,direct
+
 COPY go.mod go.sum ./
 RUN go mod download
 

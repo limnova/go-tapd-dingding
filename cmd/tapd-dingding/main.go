@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +14,7 @@ import (
 	"tapd-dingding/internal/config"
 	cryptobox "tapd-dingding/internal/crypto"
 	"tapd-dingding/internal/database"
+	"tapd-dingding/internal/logging"
 	"tapd-dingding/internal/service"
 )
 
@@ -22,7 +22,7 @@ func main() {
 	configPath := flag.String("config", "config.yaml", "configuration file path")
 	command := flag.String("command", "run", "command: run or generate-key")
 	flag.Parse()
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := logging.New()
 	switch *command {
 	case "generate-key":
 		key, err := cryptobox.GenerateKey()

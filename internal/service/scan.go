@@ -55,6 +55,8 @@ func (s *Service) scan(ctx context.Context, monitor config.Monitor) {
 		return
 	}
 	logger := s.logger.With("monitor", monitor.Name, "tapd_connection_id", connection.ID)
+	logger = logger.With("tapd_connection", connection.Name, "bug_scope", monitor.BugScope)
+	logger.Info("TAPD scan started")
 
 	bugs, err := s.listBugs(ctx, monitor, connection)
 	if err != nil {
@@ -74,17 +76,17 @@ func (s *Service) scan(ctx context.Context, monitor config.Monitor) {
 		}
 		newlySeen, observeErr := s.db.ObserveBug(ctx, monitor.Name, bug)
 		if observeErr != nil {
-			logger.Error("record TAPD bug observation failed", "bug_id", bug.ID, "error", observeErr)
+			logger.Error("record TAPD bug observation failed", "bug_id", bug.ID, "workspace_id", bug.WorkspaceID, "error", observeErr)
 		} else if newlySeen {
 			s.counters.newBugs.Add(1)
-			logger.Info("new TAPD bug observed", "bug_id", bug.ID, "source", "scan")
+			logger.Info("new TAPD bug observed", "bug_id", bug.ID, "workspace_id", bug.WorkspaceID, "source", "scan")
 		}
 
 		fingerprint := fingerprintOf(bug, monitor.NotifyOnChanges)
 		if !initialized && !monitor.NotifyExisting {
 			if err := s.db.SkipNotification(ctx, monitor.Name, bug.ID, fingerprint); err != nil {
 				failed++
-				logger.Error("seed notification state failed", "bug_id", bug.ID, "error", err)
+				logger.Error("seed notification state failed", "bug_id", bug.ID, "workspace_id", bug.WorkspaceID, "error", err)
 			} else {
 				skipped++
 			}
@@ -94,7 +96,7 @@ func (s *Service) scan(ctx context.Context, monitor config.Monitor) {
 		claimed, err := s.db.ClaimNotification(ctx, monitor.Name, bug.ID, fingerprint)
 		if err != nil {
 			failed++
-			logger.Error("claim notification failed", "bug_id", bug.ID, "error", err)
+			logger.Error("claim notification failed", "bug_id", bug.ID, "workspace_id", bug.WorkspaceID, "error", err)
 			continue
 		}
 		if !claimed {
@@ -103,23 +105,30 @@ func (s *Service) scan(ctx context.Context, monitor config.Monitor) {
 		if err := s.dingtalkQueue.Send(ctx, monitor.Webhook, buildMessage(monitor, bug)); err != nil {
 			failed++
 			s.counters.sendErrors.Add(1)
-			logger.Error("send DingTalk message failed", "bug_id", bug.ID, "error", err)
+			logger.Error("send DingTalk message failed", "bug_id", bug.ID, "workspace_id", bug.WorkspaceID, "error", err)
 			if markErr := s.db.MarkFailed(ctx, monitor.Name, bug.ID, fingerprint, err.Error()); markErr != nil {
-				logger.Error("mark notification failed state failed", "bug_id", bug.ID, "error", markErr)
+				logger.Error("mark notification failed state failed", "bug_id", bug.ID, "workspace_id", bug.WorkspaceID, "error", markErr)
 			}
 			continue
 		}
 		sent++
 		s.counters.sent.Add(1)
 		if err := s.db.MarkSent(ctx, monitor.Name, bug.ID, fingerprint); err != nil {
-			logger.Error("mark notification sent failed", "bug_id", bug.ID, "error", err)
+			logger.Error("mark notification sent failed", "bug_id", bug.ID, "workspace_id", bug.WorkspaceID, "error", err)
 		}
 	}
 
 	if err := s.db.RecordScan(ctx, monitor.Name, nil); err != nil {
 		logger.Error("record scan state failed", "error", err)
 	}
-	logger.Info("scan completed", "bugs", len(bugs), "sent", sent, "skipped", skipped, "failed", failed, "duration", time.Since(start).String())
+	logger.Info("TAPD scan completed",
+		"bugs", len(bugs),
+		"notifications_sent", sent,
+		"notifications_skipped", skipped,
+		"notifications_failed", failed,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"duration", time.Since(start).String(),
+	)
 }
 
 func (s *Service) recordScanFailure(ctx context.Context, monitor config.Monitor, message string, scanErr error, args ...any) {

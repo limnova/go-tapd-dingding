@@ -151,6 +151,17 @@ recipients:
 
 ## 新增 Bug 和每日汇总
 
+## 日志
+
+服务使用 Go 标准库 `log/slog` 输出结构化日志，默认输出 JSON 到标准输出，适合 Docker 日志采集。可通过环境变量调整本地查看方式：
+
+```bash
+LOG_FORMAT=text   # 默认 json；本地使用 key=value 格式
+LOG_LEVEL=debug   # 默认 info，支持 debug/info/warn/error
+```
+
+扫描日志包含监控名称、查询范围、缺陷数量、通知结果、耗时和 workspace；管理 API 会记录方法、路径、状态码和耗时，不会记录 Token、Webhook secret 或请求体。
+
 服务会在 `tapd_bug_observations` 中记录每个 monitor 第一次和最近一次观察到某个 Bug 的时间。日志和 `/metrics` 会标记首次观察到的 Bug；服务重启不会重复判定为新增。这里的“新增”是“首次被本服务观察到”，不是 TAPD 创建时间本身。
 
 每个 monitor 默认每天 `09:30` 和 `18:00` 发送当前监控范围内的全部 Bug 汇总，时间使用 `server.timezone`，默认是 `Asia/Shanghai`。可通过 `daily_report_times` 调整，例如：

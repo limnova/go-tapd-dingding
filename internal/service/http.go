@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"tapd-dingding/internal/database"
 	"tapd-dingding/internal/dingtalk"
@@ -45,7 +47,50 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/api/connections/dingtalk", s.handleDingTalkConnection)
 	mux.HandleFunc("/api/recipients/tapd", s.handleTapdRecipient)
 	mux.HandleFunc("/metrics", s.metrics)
-	return mux
+	return s.accessLogMiddleware(mux)
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func (s *Service) accessLogMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		started := time.Now()
+		writer := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(writer, r)
+		level := slog.LevelInfo
+		if writer.status >= http.StatusInternalServerError {
+			level = slog.LevelError
+		} else if writer.status >= http.StatusBadRequest {
+			level = slog.LevelWarn
+		}
+		s.logger.Log(r.Context(), level, "HTTP request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", writer.status,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"content_length", r.ContentLength,
+		)
+	})
 }
 
 type tapdConnectionRequest struct {

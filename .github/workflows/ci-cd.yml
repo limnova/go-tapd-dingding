@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Test and vet
@@ -71,22 +75,19 @@ jobs:
           ssh-keyscan -H "$DEPLOY_HOST" >> "$HOME/.ssh/known_hosts"
 
       - name: Deploy Compose application
-        env:
-          REPOSITORY_URL: https://github.com/${{ github.repository }}.git
         run: |
+          set -euo pipefail
+          git archive --format=tar.gz HEAD \
+            | ssh -i "$HOME/.ssh/deploy_key" "$DEPLOY_USER@$DEPLOY_HOST" \
+              "mkdir -p '$DEPLOY_PATH' && tar -xzf - -C '$DEPLOY_PATH'"
           ssh -i "$HOME/.ssh/deploy_key" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "REPOSITORY_URL='$REPOSITORY_URL' DEPLOY_PATH='$DEPLOY_PATH' bash -s" <<'REMOTE'
+            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" <<'REMOTE'
           set -eu
-          if [ ! -d "$DEPLOY_PATH/.git" ]; then
-            mkdir -p "$DEPLOY_PATH"
-            git clone --branch master --depth 1 "$REPOSITORY_URL" "$DEPLOY_PATH"
-          else
-            git -C "$DEPLOY_PATH" fetch --depth 1 origin master
-            git -C "$DEPLOY_PATH" reset --hard origin/master
-          fi
           cd "$DEPLOY_PATH"
           test -f .env
-          test -f config.yaml || cp config.example.yaml config.yaml
+          if [ ! -f config.yaml ]; then
+            cp config.example.yaml config.yaml
+          fi
           chmod 644 config.yaml
           docker compose up -d --build --remove-orphans
           docker compose ps

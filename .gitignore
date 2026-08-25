@@ -1,0 +1,35 @@
+# Go build and test artifacts
+/bin/
+/dist/
+*.exe
+*.exe~
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Local configuration and secrets
+config.yaml
+config.local.yaml
+.env
+.env.*
+!.env.example
+
+# Local dependency and tool caches
+.gocache/
+.gomodcache/
+.uv-cache/
+.uv-tools/
+
+# Logs and temporary files
+*.log
+.tmp_*
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local Codex metadata
+.codex/

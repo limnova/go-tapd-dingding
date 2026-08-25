@@ -1,0 +1,34 @@
+server:
+  listen: ":8080"
+  timezone: "Asia/Shanghai"
+  dingtalk_min_interval: 3s
+  dingtalk_queue_size: 100
+  dingtalk_rate_limit_retry: 30s
+
+database:
+  dsn: "${DATABASE_URL}"
+  max_conns: 5
+  min_conns: 1
+  health_check_seconds: 30
+
+monitors:
+  - name: "研发项目"
+    enabled: true
+    interval: 5m
+    # all 查询所有可见缺陷；mine 只查询当前 TAPD 账号的待办缺陷
+    bug_scope: "all"
+    tapd_connection_id: 1
+    dingtalk_connection_id: 1
+    bug_url_template: "https://www.tapd.cn/{workspace_id}/bugtrace/bugs/view?bug_id={id}"
+    notify_existing: false
+    notify_on_changes: true
+    title_prefix: "[研发]"
+    webhook:
+      message_type: markdown
+      include_description: true
+      max_body_bytes: 18000
+    daily_report_times: ["09:30", "18:00"]
+    recipients: []
+    mention_fields:
+      ["current_owner", "reporter", "de", "fixer", "te", "confirmer", "cc"]
+    default_recipients: []

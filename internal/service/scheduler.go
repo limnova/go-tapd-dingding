@@ -13,9 +13,8 @@ const (
 	dailyReportWindow        = 2 * time.Minute
 )
 
-// Run starts the notification queue and one scan/report pair for every
-// enabled monitor. It returns after the context is canceled and all monitor
-// goroutines have stopped.
+// Run 启动通知队列，并为每个启用的监控启动扫描和日报任务。
+// 上下文取消且所有监控协程退出后返回。
 func (s *Service) Run(ctx context.Context) {
 	go s.dingtalkQueue.Run(ctx)
 
@@ -102,21 +101,7 @@ func (s *Service) sendDailyReport(ctx context.Context, monitor config.Monitor, r
 		return
 	}
 
-	connection, err := s.db.GetTapdConnection(ctx, monitor.TapdConnectionID, s.box)
-	if err != nil {
-		s.failDailyReport(ctx, monitor, reportTime, scheduled, err)
-		return
-	}
-	dingtalkConnection, err := s.db.GetDingTalkConnection(ctx, monitor.DingTalkConnectionID, s.box)
-	if err != nil {
-		s.failDailyReport(ctx, monitor, reportTime, scheduled, err)
-		return
-	}
-
-	reportMonitor := monitor
-	reportMonitor.Webhook.URL = dingtalkConnection.URL
-	reportMonitor.Webhook.Secret = dingtalkConnection.Secret
-	reportMonitor, err = s.loadDatabaseRecipients(ctx, reportMonitor, connection.ID)
+	reportMonitor, connection, err := s.prepareMonitor(ctx, monitor)
 	if err != nil {
 		s.failDailyReport(ctx, monitor, reportTime, scheduled, err)
 		return

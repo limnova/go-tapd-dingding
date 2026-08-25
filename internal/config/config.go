@@ -1,4 +1,4 @@
-// Package config loads and validates the service configuration.
+// config 负责加载和校验服务配置。
 package config
 
 import (
@@ -13,14 +13,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the complete application configuration.
+// Config 表示应用的完整配置。
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
 	Monitors []Monitor      `yaml:"monitors"`
 }
 
-// ServerConfig controls the HTTP server and DingTalk sending queue.
+// ServerConfig 控制 HTTP 服务和钉钉发送队列。
 type ServerConfig struct {
 	Listen                 string   `yaml:"listen"`
 	Timezone               string   `yaml:"timezone"`
@@ -29,7 +29,7 @@ type ServerConfig struct {
 	DingTalkRateLimitRetry Duration `yaml:"dingtalk_rate_limit_retry"`
 }
 
-// DatabaseConfig controls the PostgreSQL connection pool.
+// DatabaseConfig 控制 PostgreSQL 连接池。
 type DatabaseConfig struct {
 	DSN             string `yaml:"dsn"`
 	MaxConns        int32  `yaml:"max_conns"`
@@ -37,7 +37,7 @@ type DatabaseConfig struct {
 	HealthCheckSecs int    `yaml:"health_check_seconds"`
 }
 
-// Monitor describes one periodic TAPD scan and notification policy.
+// Monitor 描述一个 TAPD 定时扫描任务及其通知策略。
 type Monitor struct {
 	Name                 string        `yaml:"name"`
 	Enabled              bool          `yaml:"enabled"`
@@ -56,11 +56,10 @@ type Monitor struct {
 	DailyReportTimes     []string      `yaml:"daily_report_times"`
 }
 
-// WebhookConfig controls the message format and size limit. URL and Secret
-// are populated from the encrypted database connection at runtime.
+// WebhookConfig 控制消息格式和消息大小限制。URL 和 Secret 在运行时从数据库
+// 中解密的连接配置填充，不从 YAML 文件读取。
 type WebhookConfig struct {
-	// URL and Secret are populated from the encrypted database connection at
-	// runtime. They are intentionally not accepted from YAML.
+	// URL 和 Secret 在运行时从数据库连接配置填充，故意不接受 YAML 配置。
 	URL          string `yaml:"-"`
 	Secret       string `yaml:"-"`
 	MessageType  string `yaml:"message_type"`
@@ -68,7 +67,7 @@ type WebhookConfig struct {
 	MaxBodyBytes int    `yaml:"max_body_bytes"`
 }
 
-// Recipient maps TAPD accounts to DingTalk identities.
+// Recipient 将 TAPD 账号映射到钉钉用户或手机号。
 type Recipient struct {
 	TAPDAccounts []string `yaml:"tapd_accounts" json:"tapd_accounts"`
 	Name         string   `yaml:"name" json:"name"`
@@ -76,9 +75,20 @@ type Recipient struct {
 	Mobile       string   `yaml:"mobile" json:"mobile"`
 }
 
-// Duration accepts human-readable YAML durations such as "5m" or an integer
-// number of nanoseconds.
+// Duration 支持 YAML 中的可读时长（例如 "5m"）或纳秒整数。
 type Duration time.Duration
+
+const (
+	defaultListen            = ":8080"
+	defaultTimezone          = "Asia/Shanghai"
+	defaultDingTalkInterval  = 3 * time.Second
+	defaultDingTalkQueueSize = 100
+	defaultRateLimitRetry    = 30 * time.Second
+	defaultMonitorInterval   = 5 * time.Minute
+	defaultMaxBodyBytes      = 18000
+	defaultDailyReportTime   = "09:30"
+	defaultEveningReportTime = "18:00"
+)
 
 func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	if value.Tag == "!!null" {
@@ -101,7 +111,7 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// Load reads a YAML configuration file and its sibling .env file.
+// Load 读取 YAML 配置文件及其同目录下的 .env 文件。
 func Load(path string) (Config, error) {
 	if err := loadDotEnv(filepath.Join(filepath.Dir(path), ".env")); err != nil {
 		return Config{}, err
@@ -126,8 +136,8 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// loadDotEnv provides a small dependency-free .env loader for local
-// development. Existing process environment variables always win.
+// loadDotEnv 提供一个无第三方依赖的 .env 加载器，用于本地开发。
+// 已存在的进程环境变量优先级更高。
 func loadDotEnv(path string) error {
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -160,7 +170,7 @@ func loadDotEnv(path string) error {
 	return nil
 }
 
-// Validate applies defaults and checks that the configuration is usable.
+// Validate 填充默认值，并检查配置是否可用。
 func (c *Config) Validate() error {
 	if err := c.validateServer(); err != nil {
 		return err
@@ -192,7 +202,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("monitor %q requires dingtalk_connection_id", m.Name)
 		}
 		if m.Interval == 0 {
-			m.Interval = Duration(5 * time.Minute)
+			m.Interval = Duration(defaultMonitorInterval)
 		}
 		if time.Duration(m.Interval) < time.Second {
 			return fmt.Errorf("monitor %q interval must be at least 1s", m.Name)
@@ -217,7 +227,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("monitor %q webhook.message_type must be markdown or text", m.Name)
 		}
 		if m.Webhook.MaxBodyBytes <= 0 {
-			m.Webhook.MaxBodyBytes = 18000
+			m.Webhook.MaxBodyBytes = defaultMaxBodyBytes
 		}
 		if len(m.MentionFields) == 0 {
 			m.MentionFields = []string{"current_owner", "reporter", "de", "fixer", "te", "confirmer", "cc"}
@@ -225,7 +235,7 @@ func (c *Config) Validate() error {
 		m.MentionFields = cleanStrings(m.MentionFields)
 		m.DefaultRecipients = cleanStrings(m.DefaultRecipients)
 		if len(m.DailyReportTimes) == 0 {
-			m.DailyReportTimes = []string{"09:30", "18:00"}
+			m.DailyReportTimes = []string{defaultDailyReportTime, defaultEveningReportTime}
 		}
 		seenReportTimes := map[string]bool{}
 		for j, reportTime := range m.DailyReportTimes {
@@ -256,23 +266,23 @@ func (c *Config) Validate() error {
 func (c *Config) validateServer() error {
 	c.Server.Listen = strings.TrimSpace(c.Server.Listen)
 	if c.Server.Listen == "" {
-		c.Server.Listen = ":8080"
+		c.Server.Listen = defaultListen
 	}
 	c.Server.Timezone = strings.TrimSpace(c.Server.Timezone)
 	if c.Server.Timezone == "" {
-		c.Server.Timezone = "Asia/Shanghai"
+		c.Server.Timezone = defaultTimezone
 	}
 	if c.Server.DingTalkMinInterval == 0 {
-		c.Server.DingTalkMinInterval = Duration(3 * time.Second)
+		c.Server.DingTalkMinInterval = Duration(defaultDingTalkInterval)
 	}
 	if time.Duration(c.Server.DingTalkMinInterval) < 100*time.Millisecond {
 		return fmt.Errorf("server.dingtalk_min_interval must be at least 100ms")
 	}
 	if c.Server.DingTalkQueueSize <= 0 {
-		c.Server.DingTalkQueueSize = 100
+		c.Server.DingTalkQueueSize = defaultDingTalkQueueSize
 	}
 	if c.Server.DingTalkRateLimitRetry == 0 {
-		c.Server.DingTalkRateLimitRetry = Duration(30 * time.Second)
+		c.Server.DingTalkRateLimitRetry = Duration(defaultRateLimitRetry)
 	}
 	if time.Duration(c.Server.DingTalkRateLimitRetry) < time.Second {
 		return fmt.Errorf("server.dingtalk_rate_limit_retry must be at least 1s")
@@ -305,8 +315,13 @@ func (c *Config) validateDatabase() error {
 
 func cleanStrings(values []string) []string {
 	cleaned := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		if value = strings.TrimSpace(value); value != "" {
+			if _, exists := seen[value]; exists {
+				continue
+			}
+			seen[value] = struct{}{}
 			cleaned = append(cleaned, value)
 		}
 	}

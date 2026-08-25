@@ -1,4 +1,4 @@
-// Package tapd implements the TAPD MCP client used by the service.
+// tapd 实现服务使用的 TAPD MCP 客户端。
 package tapd
 
 import (
@@ -16,7 +16,7 @@ import (
 	"unicode/utf8"
 )
 
-// Connection contains the encrypted TAPD MCP credentials and query options.
+// Connection 包含加密后的 TAPD MCP 凭据及查询选项。
 type Connection struct {
 	ID          int64
 	Name        string
@@ -25,17 +25,25 @@ type Connection struct {
 	Fields      string
 }
 
-// DefaultMCPURL is the local TAPD Streamable HTTP MCP endpoint.
+// DefaultMCPURL 是本地 TAPD Streamable HTTP MCP 服务地址。
 const DefaultMCPURL = "http://localhost:8000/mcp/"
 
-// Client discovers TAPD MCP tools and lists bugs.
+const (
+	mcpProtocolVersion = "2025-06-18"
+	mcpClientVersion   = "1.0.0"
+	mcpPageLimit       = 200
+	mcpMaxPages        = 100
+	mcpMaxResponseSize = 20 << 20
+)
+
+// Client 负责发现 TAPD MCP 工具并查询缺陷。
 type Client struct {
 	cfg        Connection
 	httpClient *http.Client
 	endpoint   string
 }
 
-// Bug is the normalized subset of TAPD fields used by notifications.
+// Bug 是通知功能使用的 TAPD 缺陷字段标准化子集。
 type Bug struct {
 	ID, Title, Description, Priority, PriorityLabel, Severity, Module, Status string
 	Reporter, CurrentOwner, De, Fixer, Te, Confirmer, Cc, Participator        string
@@ -52,7 +60,7 @@ func (c Connection) Validate() error {
 	return nil
 }
 
-// NewClient creates a TAPD MCP client.
+// NewClient 创建一个 TAPD MCP 客户端。
 func NewClient(cfg Connection) *Client {
 	return &Client{cfg: cfg, endpoint: DefaultMCPURL, httpClient: &http.Client{Timeout: 60 * time.Second}}
 }
@@ -92,22 +100,11 @@ type mcpToolResult struct {
 	StructuredContent json.RawMessage `json:"structuredContent"`
 }
 
-// ListBugs lists visible bugs across the account's workspaces.
+// ListBugs 查询当前账号在所有可见项目中的缺陷。
 func (c *Client) ListBugs(ctx context.Context) ([]Bug, error) {
-	if err := c.cfg.Validate(); err != nil {
-		return nil, err
-	}
-	endpoint := c.endpoint
-	if endpoint == "" {
-		endpoint = DefaultMCPURL
-	}
-	mcp := &mcpClient{endpoint: endpoint, token: c.cfg.AccessToken, httpClient: c.httpClient}
-	if err := mcp.initialize(ctx); err != nil {
-		return nil, fmt.Errorf("initialize TAPD MCP: %w", err)
-	}
-	tools, err := mcp.listTools(ctx)
+	mcp, tools, err := c.discover(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list TAPD MCP tools: %w", err)
+		return nil, err
 	}
 	workspaceTool := findTool(tools, "list_workspaces", "tapd_list_workspaces", "get_user_participant_projects", "workspace_list", "list_projects", "get_projects")
 	bugTool := findTool(tools, "get_bugs_list", "list_bugs", "tapd_list_bugs", "bug_list", "get_bugs", "get_bug_list", "get_bug", "bugs_list")
@@ -143,24 +140,12 @@ func (c *Client) ListBugs(ctx context.Context) ([]Bug, error) {
 	return result, nil
 }
 
-// ListMyBugs returns the current TAPD account's pending bug work items across
-// all projects visible to the account. TAPD's get_todo tool applies the
-// account-specific ownership filter on the server side.
+// ListMyBugs 查询当前 TAPD 账号在所有可见项目中的待办缺陷。
+// get_todo 工具会在服务端应用当前账号的负责人过滤条件。
 func (c *Client) ListMyBugs(ctx context.Context) ([]Bug, error) {
-	if err := c.cfg.Validate(); err != nil {
-		return nil, err
-	}
-	endpoint := c.endpoint
-	if endpoint == "" {
-		endpoint = DefaultMCPURL
-	}
-	mcp := &mcpClient{endpoint: endpoint, token: c.cfg.AccessToken, httpClient: c.httpClient}
-	if err := mcp.initialize(ctx); err != nil {
-		return nil, fmt.Errorf("initialize TAPD MCP: %w", err)
-	}
-	tools, err := mcp.listTools(ctx)
+	mcp, tools, err := c.discover(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list TAPD MCP tools: %w", err)
+		return nil, err
 	}
 	workspaceTool := findTool(tools, "list_workspaces", "tapd_list_workspaces", "get_user_participant_projects", "workspace_list", "list_projects", "get_projects")
 	todoTool := findTool(tools, "get_todo", "get_user_todo", "list_todo", "todo_list")
@@ -193,11 +178,36 @@ func (c *Client) ListMyBugs(ctx context.Context) ([]Bug, error) {
 	return result, nil
 }
 
+// discover 初始化 MCP 会话并获取工具列表。
+// ListBugs 和 ListMyBugs 共享这段流程，避免两条查询路径出现行为差异。
+func (c *Client) discover(ctx context.Context) (*mcpClient, []toolInfo, error) {
+	if err := c.cfg.Validate(); err != nil {
+		return nil, nil, err
+	}
+	endpoint := c.endpoint
+	if endpoint == "" {
+		endpoint = DefaultMCPURL
+	}
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 60 * time.Second}
+	}
+	mcp := &mcpClient{endpoint: endpoint, token: c.cfg.AccessToken, httpClient: httpClient}
+	if err := mcp.initialize(ctx); err != nil {
+		return nil, nil, fmt.Errorf("initialize TAPD MCP: %w", err)
+	}
+	tools, err := mcp.listTools(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list TAPD MCP tools: %w", err)
+	}
+	return mcp, tools, nil
+}
+
 func (m *mcpClient) initialize(ctx context.Context) error {
 	result, err := m.request(ctx, "initialize", map[string]any{
-		"protocolVersion": "2025-06-18",
+		"protocolVersion": mcpProtocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]string{"name": "tapd-dingding", "version": "1.0.0"},
+		"clientInfo":      map[string]string{"name": "tapd-dingding", "version": mcpClientVersion},
 	})
 	if err != nil {
 		return err
@@ -210,7 +220,7 @@ func (m *mcpClient) initialize(ctx context.Context) error {
 	}
 	m.protocolVersion = initialized.ProtocolVersion
 	if m.protocolVersion == "" {
-		m.protocolVersion = "2025-06-18"
+		m.protocolVersion = mcpProtocolVersion
 	}
 	if err := m.notify(ctx, "notifications/initialized", map[string]any{}); err != nil {
 		return err
@@ -221,7 +231,7 @@ func (m *mcpClient) initialize(ctx context.Context) error {
 func (m *mcpClient) listTools(ctx context.Context) ([]toolInfo, error) {
 	var tools []toolInfo
 	var cursor string
-	for page := 0; page < 100; page++ {
+	for page := 0; page < mcpMaxPages; page++ {
 		params := map[string]any{}
 		if cursor != "" {
 			params["cursor"] = cursor
@@ -261,10 +271,10 @@ func (m *mcpClient) listWorkspaces(ctx context.Context, tool toolInfo) ([]string
 }
 
 func (m *mcpClient) listBugs(ctx context.Context, tool toolInfo, workspaceID string, statuses []string, fields string) ([]Bug, error) {
-	limit := 200
+	limit := mcpPageLimit
 	var result []Bug
 	seen := map[string]bool{}
-	for page := 1; page <= 100; page++ {
+	for page := 1; page <= mcpMaxPages; page++ {
 		before := len(result)
 		args := buildBugArguments(tool, workspaceID, statuses, fields, page, limit)
 		payload, err := m.callTool(ctx, tool, args)
@@ -287,10 +297,10 @@ func (m *mcpClient) listBugs(ctx context.Context, tool toolInfo, workspaceID str
 }
 
 func (m *mcpClient) listMyBugs(ctx context.Context, tool toolInfo, workspaceID string) ([]Bug, error) {
-	const limit int64 = 200
+	const limit int64 = mcpPageLimit
 	var result []Bug
 	seen := map[string]bool{}
-	for page := int64(1); page <= 100; page++ {
+	for page := int64(1); page <= mcpMaxPages; page++ {
 		args := buildTodoArguments(tool, workspaceID, page, limit)
 		payload, err := m.callTool(ctx, tool, args)
 		if err != nil {
@@ -524,7 +534,7 @@ func (m *mcpClient) notify(ctx context.Context, method string, params map[string
 	if sessionID := resp.Header.Get("Mcp-Session-Id"); sessionID != "" {
 		m.sessionID = sessionID
 	}
-	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, mcpMaxResponseSize))
 	if err != nil {
 		return fmt.Errorf("read MCP notification response: %w", err)
 	}
@@ -553,7 +563,7 @@ func (m *mcpClient) request(ctx context.Context, method string, params map[strin
 	if sessionID := resp.Header.Get("Mcp-Session-Id"); sessionID != "" {
 		m.sessionID = sessionID
 	}
-	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, mcpMaxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("read MCP response: %w", err)
 	}

@@ -1,4 +1,4 @@
-// Package crypto provides authenticated encryption for persisted credentials.
+// crypto 为持久化凭据提供带认证的加密能力。
 package crypto
 
 import (
@@ -16,10 +16,10 @@ import (
 
 const keyEnv = "APP_ENCRYPTION_KEY"
 
-// Box encrypts and decrypts values with AES-256-GCM.
+// Box 使用 AES-256-GCM 加密和解密数据。
 type Box struct{ aead cipher.AEAD }
 
-// FromEnvironment creates a Box from APP_ENCRYPTION_KEY.
+// FromEnvironment 从 APP_ENCRYPTION_KEY 创建加密盒。
 func FromEnvironment() (*Box, error) {
 	raw := strings.TrimSpace(os.Getenv(keyEnv))
 	if raw == "" {
@@ -40,7 +40,7 @@ func FromEnvironment() (*Box, error) {
 	return &Box{aead: aead}, nil
 }
 
-// GenerateKey returns a base64-encoded random 32-byte key.
+// GenerateKey 生成一个经过 Base64 编码的随机 32 字节密钥。
 func GenerateKey() (string, error) {
 	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
@@ -49,7 +49,7 @@ func GenerateKey() (string, error) {
 	return base64.RawStdEncoding.EncodeToString(key), nil
 }
 
-// Encrypt authenticates and encrypts plaintext.
+// Encrypt 为明文添加认证并进行加密。
 func (b *Box) Encrypt(plaintext string) (string, error) {
 	if b == nil || b.aead == nil {
 		return "", errors.New("encryption box is not initialized")
@@ -64,7 +64,7 @@ func (b *Box) Encrypt(plaintext string) (string, error) {
 	return base64.RawStdEncoding.EncodeToString(sealed), nil
 }
 
-// Decrypt authenticates and decrypts a value produced by Encrypt.
+// Decrypt 校验并解密由 Encrypt 生成的密文。
 func (b *Box) Decrypt(encoded string) (string, error) {
 	if b == nil || b.aead == nil {
 		return "", errors.New("encryption box is not initialized")
@@ -94,8 +94,8 @@ func decodeKey(raw string) ([]byte, error) {
 	if key, err := hex.DecodeString(raw); err == nil && len(key) == 32 {
 		return key, nil
 	}
-	// Do not silently derive a key from a weak/short password. Operators can
-	// still use a passphrase by explicitly hashing it before deployment.
+	// 不要静默地从短密码派生密钥。部署时如果确实使用口令，
+	// 应先由运维人员显式计算哈希后再配置。
 	return nil, errors.New("key must decode to exactly 32 bytes")
 }
 

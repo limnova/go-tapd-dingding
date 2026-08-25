@@ -20,6 +20,28 @@ func (s *Service) listBugs(ctx context.Context, monitor config.Monitor, connecti
 	return client.ListBugs(ctx)
 }
 
+// prepareMonitor 加载数据库中的外部连接，并将运行时凭据填充到监控配置。
+// 静态配置只保存策略，敏感连接始终从数据库解密读取。
+func (s *Service) prepareMonitor(ctx context.Context, monitor config.Monitor) (config.Monitor, tapd.Connection, error) {
+	connection, err := s.db.GetTapdConnection(ctx, monitor.TapdConnectionID, s.box)
+	if err != nil {
+		return monitor, tapd.Connection{}, fmt.Errorf("load TAPD connection: %w", err)
+	}
+
+	dingtalkConnection, err := s.db.GetDingTalkConnection(ctx, monitor.DingTalkConnectionID, s.box)
+	if err != nil {
+		return monitor, tapd.Connection{}, fmt.Errorf("load DingTalk connection: %w", err)
+	}
+
+	monitor.Webhook.URL = dingtalkConnection.URL
+	monitor.Webhook.Secret = dingtalkConnection.Secret
+	monitor, err = s.loadDatabaseRecipients(ctx, monitor, connection.ID)
+	if err != nil {
+		return monitor, tapd.Connection{}, fmt.Errorf("load TAPD recipient mappings: %w", err)
+	}
+	return monitor, connection, nil
+}
+
 func (s *Service) scan(ctx context.Context, monitor config.Monitor) {
 	start := time.Now()
 	s.counters.scans.Add(1)
@@ -27,22 +49,9 @@ func (s *Service) scan(ctx context.Context, monitor config.Monitor) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	connection, err := s.db.GetTapdConnection(ctx, monitor.TapdConnectionID, s.box)
+	monitor, connection, err := s.prepareMonitor(ctx, monitor)
 	if err != nil {
-		s.recordScanFailure(ctx, monitor, "load TAPD connection failed", err, "tapd_connection_id", monitor.TapdConnectionID)
-		return
-	}
-	dingtalkConnection, err := s.db.GetDingTalkConnection(ctx, monitor.DingTalkConnectionID, s.box)
-	if err != nil {
-		s.recordScanFailure(ctx, monitor, "load DingTalk connection failed", err, "dingtalk_connection_id", monitor.DingTalkConnectionID)
-		return
-	}
-
-	monitor.Webhook.URL = dingtalkConnection.URL
-	monitor.Webhook.Secret = dingtalkConnection.Secret
-	monitor, err = s.loadDatabaseRecipients(ctx, monitor, connection.ID)
-	if err != nil {
-		s.recordScanFailure(ctx, monitor, "load TAPD recipient mappings failed", err, "tapd_connection_id", connection.ID)
+		s.recordScanFailure(ctx, monitor, "prepare monitor failed", err, "tapd_connection_id", monitor.TapdConnectionID, "dingtalk_connection_id", monitor.DingTalkConnectionID)
 		return
 	}
 	logger := s.logger.With("monitor", monitor.Name, "tapd_connection_id", connection.ID)

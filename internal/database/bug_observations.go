@@ -7,8 +7,8 @@ import (
 	"tapd-dingding/internal/tapd"
 )
 
-// ObserveBug records the first and most recent time this monitor saw a bug.
-// The returned bool is true only for the first observation of this bug.
+// ObserveBug 记录监控首次及最近一次观察到某个缺陷的时间。
+// 返回值仅在首次观察到该缺陷时为 true。
 func (db *DB) ObserveBug(ctx context.Context, monitor string, bug tapd.Bug) (bool, error) {
 	var firstSeen bool
 	err := db.Pool.QueryRow(ctx, `

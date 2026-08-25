@@ -1,4 +1,4 @@
-// Package dingtalk sends messages through DingTalk custom robot webhooks.
+// dingtalk 通过钉钉自定义机器人 Webhook 发送消息。
 package dingtalk
 
 import (
@@ -20,13 +20,13 @@ import (
 	"tapd-dingding/internal/config"
 )
 
-// Client sends signed or unsigned DingTalk webhook requests.
+// Client 发送带签名或不带签名的钉钉 Webhook 请求。
 type Client struct {
 	cfg        config.WebhookConfig
 	httpClient *http.Client
 }
 
-// Message is a DingTalk text or Markdown message.
+// Message 是钉钉文本或 Markdown 消息。
 type Message struct {
 	MsgType  string    `json:"msgtype"`
 	Text     *Text     `json:"text,omitempty"`
@@ -34,30 +34,30 @@ type Message struct {
 	At       At        `json:"at"`
 }
 
-// Text is the content of a text message.
+// Text 是文本消息的内容。
 type Text struct {
 	Content string `json:"content"`
 }
 
-// Markdown is the content of a Markdown message.
+// Markdown 是 Markdown 消息的内容。
 type Markdown struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
 }
 
-// At identifies DingTalk users or mobiles to mention.
+// At 标识需要被 @ 的钉钉用户或手机号。
 type At struct {
 	Mobiles []string `json:"atMobiles,omitempty"`
 	UserIDs []string `json:"atUserIds,omitempty"`
 	IsAtAll bool     `json:"isAtAll"`
 }
 
-// NewClient creates a webhook client from runtime webhook configuration.
+// NewClient 根据运行时 Webhook 配置创建客户端。
 func NewClient(cfg config.WebhookConfig) *Client {
 	return &Client{cfg: cfg, httpClient: &http.Client{Timeout: 15 * time.Second}}
 }
 
-// Send posts one message and returns DingTalk or transport errors.
+// Send 发送一条消息，并返回钉钉接口或网络传输错误。
 func (c *Client) Send(ctx context.Context, message Message) error {
 	if c == nil || c.httpClient == nil {
 		return fmt.Errorf("DingTalk client is not initialized")

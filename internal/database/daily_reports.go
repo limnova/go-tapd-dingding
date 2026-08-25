@@ -11,8 +11,8 @@ import (
 
 const dailyReportLease = 5 * time.Minute
 
-// ClaimDailyReport makes the scheduled report idempotent across restarts and
-// multiple service instances. Failed reports can be claimed again.
+// ClaimDailyReport 让定时报表在服务重启和多实例运行时保持幂等。
+// 失败的报表允许再次认领。
 func (db *DB) ClaimDailyReport(ctx context.Context, monitor string, reportDate time.Time, reportTime string) (bool, error) {
 	const q = `
 INSERT INTO tapd_daily_reports(monitor_name,report_date,report_time,status,attempts,updated_at)

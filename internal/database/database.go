@@ -1,4 +1,4 @@
-// Package database owns PostgreSQL migrations and persistence operations.
+// database 负责 PostgreSQL 迁移和持久化操作。
 package database
 
 import (
@@ -11,10 +11,10 @@ import (
 	"tapd-dingding/internal/config"
 )
 
-// DB is the application's PostgreSQL handle.
+// DB 是应用使用的 PostgreSQL 句柄。
 type DB struct{ Pool *pgxpool.Pool }
 
-// Open creates, verifies, and migrates a PostgreSQL connection pool.
+// Open 创建、验证并迁移 PostgreSQL 连接池。
 func Open(ctx context.Context, cfg config.DatabaseConfig, logger *slog.Logger) (*DB, error) {
 	if logger == nil {
 		logger = slog.Default()

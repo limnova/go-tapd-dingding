@@ -1,5 +1,4 @@
-// Package service coordinates scheduling, persistence, message rendering, and
-// external notification delivery.
+// service 负责协调调度、持久化、消息渲染和外部通知发送。
 package service
 
 import (
@@ -13,7 +12,7 @@ import (
 	"tapd-dingding/internal/database"
 )
 
-// Service is the long-running TAPD notification worker.
+// Service 是长期运行的 TAPD 通知工作器。
 type Service struct {
 	cfg           config.Config
 	db            *database.DB
@@ -33,7 +32,7 @@ type counters struct {
 	sendErrors atomic.Uint64
 }
 
-// New constructs a Service from validated configuration and dependencies.
+// New 根据已校验的配置和依赖创建 Service。
 func New(cfg config.Config, db *database.DB, box *cryptobox.Box, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.Default()

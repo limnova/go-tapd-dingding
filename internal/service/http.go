@@ -14,10 +14,9 @@ import (
 	"tapd-dingding/internal/tapd"
 )
 
-// Handler returns the service's health, metrics, and connection-management
-// endpoints. Connection endpoints are intentionally kept on the internal
-// management server; they accept credentials and should be protected by the
-// deployment's network policy or gateway.
+// Handler 返回健康检查、指标和连接管理接口。
+// 连接管理接口会接收敏感凭据，应通过部署环境的网络策略或网关保护，
+// 不应直接暴露到公网。
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

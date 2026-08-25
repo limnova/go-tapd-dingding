@@ -87,6 +87,7 @@ jobs:
           cd "$DEPLOY_PATH"
           test -f .env
           test -f config.yaml || cp config.example.yaml config.yaml
+          chmod 644 config.yaml
           docker compose up -d --build --remove-orphans
           docker compose ps
           curl --fail --silent --show-error http://127.0.0.1:8080/healthz

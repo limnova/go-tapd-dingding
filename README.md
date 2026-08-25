@@ -21,9 +21,10 @@ go run ./cmd/tapd-dingding -config config.yaml
 
 ## Docker Compose 部署
 
-项目提供 `Dockerfile` 和 `compose.yaml`，会启动两个服务：
+项目提供 `Dockerfile`、`Dockerfile.mcp` 和 `compose.yaml`，会启动三个服务：
 
 - `postgres`：PostgreSQL 18.6，数据持久化到 Docker volume `tapd-dingding-postgres`；
+- `tapd-mcp`：使用 TAPD Token 启动 Streamable HTTP MCP 服务，仅加入 Compose 内部网络；
 - `app`：TAPD → 钉钉通知服务，应用端口默认只绑定到服务器本机的 `127.0.0.1:8080`。
 
 首次部署时复制配置模板并生成应用密钥：
@@ -43,7 +44,7 @@ docker compose ps
 curl http://127.0.0.1:8080/healthz
 ```
 
-Compose 默认使用 `host.docker.internal:8000` 访问宿主机上的 TAPD MCP 服务；如果 MCP 在其他容器中运行，请把 `.env` 中的 `TAPD_MCP_URL` 改成对应的 Compose 服务地址。PostgreSQL 不直接发布到公网，只在 Compose 内部网络中提供服务。
+Compose 会使用 `TAPD_ACCESS_TOKEN` 启动内部 `tapd-mcp` 服务，并通过 `http://tapd-mcp:8000/mcp/` 调用。请把 Token 放入服务器 `.env`，不要提交到 Git。PostgreSQL 和 TAPD MCP 都不直接发布到公网。
 
 ## CI/CD
 
@@ -112,7 +113,7 @@ GET http://127.0.0.1:8080/api/recipients/tapd?tapd_connection_id=6
 
 映射按 `tapd_connection_id + tapd_account` 唯一保存。服务扫描时会读取对应 TAPD Token 下的映射；当缺陷的 `current_owner`、`reporter` 等字段命中 `lim1` 时，自动把 `dingtalk_user_id` 放入钉钉消息的 `atUserIds`。数据库中存在该 Token 的映射时，会优先使用数据库映射而不是 monitor 里的静态 `recipients`。
 
-接口返回连接 `id` 后，把对应 ID 填入 monitor 的 `tapd_connection_id` 和 `dingtalk_connection_id`。服务默认调用 `http://localhost:8000/mcp/` 上的 TAPD Streamable HTTP MCP 服务；TAPD MCP 会先发现当前 Token 可访问的项目，再查询这些项目的 Bug，不需要在连接中填写固定 `workspace_id`。
+接口返回连接 `id` 后，把对应 ID 填入 monitor 的 `tapd_connection_id` 和 `dingtalk_connection_id`。Compose 部署时，服务通过 `http://tapd-mcp:8000/mcp/` 调用 TAPD Streamable HTTP MCP 服务；TAPD MCP 会先发现当前 Token 可访问的项目，再查询这些项目的 Bug，不需要在连接中填写固定 `workspace_id`。
 
 钉钉通知通过服务内 FIFO 队列发送，默认两条消息至少间隔 3 秒；遇到钉钉限流错误 `660026` 时会自动延迟重试。可在 `server` 中调整：
 

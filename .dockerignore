@@ -17,6 +17,7 @@ dist
 *.out
 coverage.*
 Dockerfile*
+!Dockerfile.mcp
 compose*.yml
 compose*.yaml
 README.md

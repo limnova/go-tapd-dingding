@@ -31,7 +31,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
-      TAPD_MCP_URL: ${TAPD_MCP_URL:-http://host.docker.internal:8000/mcp/}
+      TAPD_MCP_URL: ${TAPD_MCP_URL:-http://tapd-mcp:8000/mcp/}
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     ports:
@@ -41,12 +41,53 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      tapd-mcp:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - backend
+
+  tapd-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    image: tapd-dingding-mcp:local
+    restart: unless-stopped
+    init: true
+    environment:
+      TAPD_ACCESS_TOKEN: ${TAPD_ACCESS_TOKEN:?TAPD_ACCESS_TOKEN is required}
+    command:
+      - --access-token
+      - ${TAPD_ACCESS_TOKEN:?TAPD_ACCESS_TOKEN is required}
+      - --api-base-url
+      - https://api.tapd.cn
+      - --tapd-base-url
+      - https://www.tapd.cn
+      - --mode
+      - streamable-http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --path
+      - /mcp/
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import socket; s=socket.create_connection(('127.0.0.1', 8000), 5); s.close()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     security_opt:
       - no-new-privileges:true
     cap_drop:

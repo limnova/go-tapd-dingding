@@ -2,7 +2,9 @@
 
 FROM python:3.12-slim-bookworm
 
-RUN pip install --no-cache-dir --disable-pip-version-check mcp-server-tapd \
+RUN pip install --no-cache-dir --disable-pip-version-check \
+        --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+        mcp-server-tapd==8.0.81 \
     && useradd --system --uid 10002 --create-home --home-dir /app mcpuser
 
 USER mcpuser

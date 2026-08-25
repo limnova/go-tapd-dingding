@@ -19,6 +19,46 @@ go mod tidy
 go run ./cmd/tapd-dingding -config config.yaml
 ```
 
+## Docker Compose 部署
+
+项目提供 `Dockerfile` 和 `compose.yaml`，会启动两个服务：
+
+- `postgres`：PostgreSQL 18.6，数据持久化到 Docker volume `tapd-dingding-postgres`；
+- `app`：TAPD → 钉钉通知服务，应用端口默认只绑定到服务器本机的 `127.0.0.1:8080`。
+
+首次部署时复制配置模板并生成应用密钥：
+
+```bash
+cp .env.example .env
+cp config.example.yaml config.yaml
+docker build --tag tapd-dingding:local .
+docker run --rm tapd-dingding:local -command generate-key
+```
+
+将生成的密钥填入 `.env` 的 `APP_ENCRYPTION_KEY`，同时设置 `POSTGRES_PASSWORD`，并让 `DATABASE_URL` 中的密码与其一致。然后启动：
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl http://127.0.0.1:8080/healthz
+```
+
+Compose 默认使用 `host.docker.internal:8000` 访问宿主机上的 TAPD MCP 服务；如果 MCP 在其他容器中运行，请把 `.env` 中的 `TAPD_MCP_URL` 改成对应的 Compose 服务地址。PostgreSQL 不直接发布到公网，只在 Compose 内部网络中提供服务。
+
+## CI/CD
+
+`.github/workflows/ci-cd.yml` 会在 Pull Request 和推送到 `master` 时运行 `go test ./...`、`go vet ./...`，并验证 Compose 配置和应用镜像构建。推送到 `master` 且检查通过后，工作流会通过 SSH 连接部署服务器，在 `/home/ubuntu/tapd-dingding` 更新代码并执行 `docker compose up -d --build --remove-orphans`。
+
+GitHub 仓库需要配置以下 Actions Secrets：
+
+```text
+DEPLOY_HOST   服务器 IP 或域名
+DEPLOY_USER   SSH 用户名
+DEPLOY_SSH_KEY 对应服务器 authorized_keys 的私钥
+```
+
+服务器上的 `.env` 和 `config.yaml` 不纳入 Git，由部署服务器自行保留。
+
 本机 PostgreSQL 已验证为 18.4，服务使用独立的 `tapd_app` 用户连接 `tapd_dingding` 数据库，地址为 `127.0.0.1:5432`。服务启动时会自动创建状态表和连接表，连接配置通过下面的两个 HTTP 接口加密写入数据库。
 
 ```text

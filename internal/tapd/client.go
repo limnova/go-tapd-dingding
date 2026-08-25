@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -27,6 +28,8 @@ type Connection struct {
 
 // DefaultMCPURL 是本地 TAPD Streamable HTTP MCP 服务地址。
 const DefaultMCPURL = "http://localhost:8000/mcp/"
+
+const mcpURLEnv = "TAPD_MCP_URL"
 
 const (
 	mcpProtocolVersion = "2025-06-18"
@@ -62,7 +65,11 @@ func (c Connection) Validate() error {
 
 // NewClient 创建一个 TAPD MCP 客户端。
 func NewClient(cfg Connection) *Client {
-	return &Client{cfg: cfg, endpoint: DefaultMCPURL, httpClient: &http.Client{Timeout: 60 * time.Second}}
+	endpoint := strings.TrimSpace(os.Getenv(mcpURLEnv))
+	if endpoint == "" {
+		endpoint = DefaultMCPURL
+	}
+	return &Client{cfg: cfg, endpoint: endpoint, httpClient: &http.Client{Timeout: 60 * time.Second}}
 }
 
 type toolInfo struct {
